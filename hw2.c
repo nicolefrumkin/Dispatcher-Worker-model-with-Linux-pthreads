@@ -2,14 +2,9 @@
 #include <time.h>
 #include <pthread.h>
 #include <stdbool.h>
-
-void* worker_thread(void* arg);
-void create_counter_files(num_counters);
-void create_threads(int num_threads, int* thread_ids,pthread_t* threads);
-void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue);
-void init_queue(JobQueue* queue);
-void enqueue(JobQueue* queue, const char* job);
-char* dequeue(JobQueue* queue);
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 typedef struct JobQueue { // thread safe queue
     char* jobs[1024];
@@ -20,6 +15,16 @@ typedef struct JobQueue { // thread safe queue
     pthread_cond_t not_empty; // command variables
     pthread_cond_t not_full;
 } JobQueue;
+
+
+void* worker_thread(void* arg);
+void create_counter_files(int num_counters);
+void create_threads(int num_threads, int* thread_ids,pthread_t* threads, JobQueue* queue);
+void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads);
+void init_queue(JobQueue* queue);
+void enqueue(JobQueue* queue, const char* job);
+char* dequeue(JobQueue* queue);
+void execute_command(const char* cmd);
 
 int main(int argc, char *argv[]) {
     time_t start_time = time(NULL); // save start time of the program
@@ -36,26 +41,38 @@ int main(int argc, char *argv[]) {
     memset(counter_arr,0,sizeof(counter_arr));
     int thread_ids[4096] = {0}; //its required to create num_threads new threads
     pthread_t* threads = malloc(num_threads * sizeof(pthread_t));
+    JobQueue* queue = (JobQueue*)malloc(sizeof(JobQueue)); //make sure its one queue
+
     FILE* cmdfile = fopen(argv[1], "r");
     if (cmdfile == NULL) {
         perror("Error opening file");
         return 1;
     }
 
+    init_queue(queue);
     create_counter_files(num_counters);
+    printf("create counter files completed \n");
 
-    create_threads(num_threads,thread_ids,threads);
+    create_threads(num_threads,thread_ids,threads, queue);
+    printf("create threads completed \n");
 
-    read_lines(cmdfile, thread_ids, threads);
+    read_lines(cmdfile, thread_ids, threads, queue, num_threads);
+    printf("read lines completed \n");
 
+// wait for queue to empty
+    // while(queue->count > 0){
+    //     pthread_cond_wait(&queue->not_full, &queue->lock);
+    // }
     return 0;
 }
 
 void* worker_thread(void* arg) {
-    JobQueue* queue = (JobQueue*)arg; // put it out of the function
 
+    JobQueue* queue = (JobQueue*)arg;
     while (1) {
-        char* job = dequeue(queue); // Get the next job
+        
+        char* job = dequeue(queue); // Get the next job - always trying
+        printf("inside worker thread job is: %s\n", job);
         if (job == NULL) {
             continue;
         }
@@ -63,10 +80,10 @@ void* worker_thread(void* arg) {
         // Parse and execute commands in the job
         char* token = strtok(job, ";");
         while (token != NULL) {
+            printf("inside worker thread\n");
             execute_command(token);
             token = strtok(NULL, ";");
         }
-
         free(job);
     }
     return NULL;
@@ -74,6 +91,7 @@ void* worker_thread(void* arg) {
 
 
 void init_queue(JobQueue* queue) {
+    
     queue->front = 0;
     queue->rear = 0;
     queue->count = 0;
@@ -83,27 +101,33 @@ void init_queue(JobQueue* queue) {
 }
 
 void enqueue(JobQueue* queue, const char* job) {
+    printf("inside enque cmd is: %s\n", job);
     pthread_mutex_lock(&queue->lock); // lock the mutex - ensures only one thread can modify the queue at a time
     while (queue->count == 1024) { // if queue full - wait
         pthread_cond_wait(&queue->not_full, &queue->lock);
     }
     queue->jobs[queue->rear] = strdup(job); // adds the job
     queue->rear = (queue->rear + 1) % 1024;
-    queue->count++;
-    pthread_cond_broadcast(&queue->not_empty); // ells all threads that the queue isnt empty
+    queue->count = queue->count + 1;
+    pthread_cond_signal(&queue->not_empty); // ells all threads that the queue isnt empty
     pthread_mutex_unlock(&queue->lock); // unlocks mutex
 }
 
+//our problen is that queue count is always 0!!! 
 char* dequeue(JobQueue* queue) {
+    //printf("inside dequeue");
     pthread_mutex_lock(&queue->lock);
     while (queue->count == 0) { // if queue empty - wait
         pthread_cond_wait(&queue->not_empty, &queue->lock);
     }
+
     char* job = queue->jobs[queue->front]; // get job
+    printf("inside dequeue is: %s\n", job);
     queue->front = (queue->front + 1);
-    queue->count--;
-    pthread_cond_broadcast(&queue->not_full); // tells all threads that there is space in the queue for new jobs
+    queue->count = queue->count - 1;
+    pthread_cond_signal(&queue->not_full); // tells all threads that there is space in the queue for new jobs
     pthread_mutex_unlock(&queue->lock); 
+
     return job;
 }
 
@@ -145,31 +169,28 @@ void create_counter_files(int num_counters) {
         FILE *file = fopen(filename, "w");
         if (file == NULL) {
             perror("Error creating file");
-            return 1;
         }
         fprintf(file, "0");
         fclose(file);
     }
 }
 
-void create_threads(int num_threads, int* thread_ids, pthread_t* threads) { 
+void create_threads(int num_threads, int* thread_ids, pthread_t* threads, JobQueue* queue) { 
     if (threads == NULL) {
         perror("Failed to allocate memory");
-        return 1;
     }
 
     for (int i = 0; i < num_threads; i++) {
         thread_ids[i] = i + 1; // Assign a unique ID to each thread
-        if (pthread_create(&threads[i], NULL, worker_thread, &thread_ids[i]) != 0) {
+        if (pthread_create(&threads[i], NULL, worker_thread, &queue) != 0) {
             perror("Failed to create thread");
             free(threads);
-            return 1;
         }
     }
 }
 
 
-void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue) {
+void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads) {
     char line[1024]; // Buffer to hold each line
     char* token;     // Token for parsing
     const char* delimiter = ";"; // Command delimiter
@@ -187,22 +208,28 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
 
         else if (strcmp(token, "dispatcher_msleep") == 0) {
             int x = atoi(strtok(NULL, " "));
-            usleep(x);
+            // time_t start_time = time(NULL);
+            // char* ts = ctime(&start_time);
+            // printf("time is: %s\n", ts);
+            usleep(x*1000);
+            // time_t end_time = time(NULL);
+            // char* te = ctime(&end_time);
+            // printf("time is: %s\n", te);
             continue;
         }
         else if (strcmp(token, "dispatcher_wait") == 0) {
-            for (int i=0; i < thread_ids; i++){
+            for (int i=0; i < num_threads; i++){
                 pthread_join(threads[i],NULL);
             }
             continue;
         }
 
         else if (strcmp(token, "worker") == 0) {
-            int i = 0;
+            printf("inside worker with token: %s\n", token);
             enqueue(queue, strtok(NULL,""));
             }
         }
 
-    }
 }
+
 
