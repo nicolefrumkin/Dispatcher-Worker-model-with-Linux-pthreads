@@ -31,7 +31,7 @@ int main() {
             }
 
             // Move to the next command
-            token = strtok(commands, ";");
+            token = strtok("NULL", ";");
         }
     }
 
