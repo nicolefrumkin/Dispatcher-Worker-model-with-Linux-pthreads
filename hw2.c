@@ -25,7 +25,7 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
 void init_queue(JobQueue* queue);
 void enqueue(JobQueue* queue, const char* job);
 char* dequeue(JobQueue* queue);
-void execute_command(const char* cmd);
+void execute_command(char* cmd);
 
 int main(int argc, char *argv[]) {
     time_t start_time = time(NULL); // save start time of the program
@@ -57,6 +57,7 @@ int main(int argc, char *argv[]) {
     create_threads(num_threads,thread_ids,threads, queue);
 
     read_lines(cmdfile, thread_ids, threads, queue, num_threads);
+    fclose(cmdfile); 
 
     // wait for background  to empty
     pthread_mutex_lock(&queue->lock);
@@ -71,7 +72,7 @@ int main(int argc, char *argv[]) {
 
     free(threads);
     free(queue);
-    fclose(cmdfile); 
+
     return 0;
 }
 
@@ -86,20 +87,19 @@ void* worker_thread(void* arg) {
         pthread_mutex_unlock(&queue->lock);
 
         char* job = dequeue(queue);
-        printf("in worker thread after dequeue\n");
+
         if (job == NULL) {
             continue;
         }
         // Parse and execute commands in the job
-        printf("job: %s\n", job);
+        //printf("job: %s\n", job);
         char* token = strtok(job, ";");
-        printf("token: %s\n", token);
-        execute_command(token);
-        //while (token != NULL) {
-            //printf("token: %s\n", token);
-            //execute_command(token);
-            //token = strtok(NULL, ";");
-        //}
+        while (token != NULL) {
+            printf("token: %s\n", token);
+            execute_command(token);
+            token = strtok(NULL, ";");
+        }
+        token ='\0';
         free(job);
     }
     return NULL;
@@ -140,43 +140,41 @@ char* dequeue(JobQueue* queue) {
     queue->count = queue->count - 1;
     pthread_cond_broadcast(&queue->not_full); // tells all threads that there is space in the queue for new jobs
     pthread_mutex_unlock(&queue->lock); 
-
     return job;
 }
 
-void execute_command(const char* cmd) {
-    printf("in execute\n");
-    char* command = strdup(cmd); // allocates memory and creates a duplicate of a string.
-    char* cmd1 = strtok(command, " ");
-    char* cmd2 = strtok(NULL, " ");
-    printf("cmd1: %s, cmd2: %s\n",cmd1,cmd2);
-    char filename[20];
+void execute_command(char* cmd) {
+
+    char* cmd1 = strtok(cmd, " ");
+    char* cmd2 = strtok(NULL, "");
+    char filename[14];
     int number = atoi(cmd2); // Convert cmd2 to an integer
-    snprintf(filename, sizeof(filename), "counter%02d.txt", number);
+    snprintf(filename, sizeof(filename), "count%02d.txt", number);
+    printf("cmd1: %s, cmd2: %s\n",cmd1,cmd2);
 
     if (strcmp(cmd1, "msleep") == 0) {
         int x = atoi(cmd2);
         usleep(x * 1000); // Sleep in microseconds
     } else if (strcmp(cmd1, "increment") == 0) {
-        FILE* file = fopen(filename, "r+"); // opens file for reading and writing
-        if (file) {
-            int value;
-            fscanf(file, "%d", &value); // read value in file
-            fseek(file, 0, SEEK_SET); // return pointer to beginning
-            fprintf(file, "%d\n", value + 1); // write the new value
-            fclose(file);
-        }
+        FILE* file = fopen(filename, "r"); // opens file for reading and writing    
+        int value;
+        fscanf(file, "%d", &value); // read value in file
+        fclose(file);
+        file = fopen(filename, "w");
+        fprintf(file, "%d\n", value + 1); // write the new value
+        fclose(file);
+        
     } else if (strcmp(cmd1, "decrement") == 0) {
-        FILE* file = fopen(filename, "r+");
-        if (file) {
-            int value;
-            fscanf(file, "%d", &value);
-            fseek(file, 0, SEEK_SET);
-            fprintf(file, "%d\n", value - 1);
-            fclose(file);
-        }
+        FILE* file = fopen(filename, "r"); // opens file for reading and writing    
+        int value;
+        fscanf(file, "%d", &value); // read value in file
+        fclose(file);
+        file = fopen(filename, "w");
+        fprintf(file, "%d\n", value - 1); // write the new value
+        fclose(file);
     }
-    free(command);
+    cmd1 ='\0';
+    cmd2 ='\0';
 }
 
 void create_counter_files(int num_counters) {
@@ -188,7 +186,7 @@ void create_counter_files(int num_counters) {
         if (file == NULL) {
             perror("Error creating file");
         }
-        fprintf(file, "0");
+        fprintf(file, "0\n");
         fclose(file);
     }
 }
