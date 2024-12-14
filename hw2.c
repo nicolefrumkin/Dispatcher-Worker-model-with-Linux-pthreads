@@ -1,10 +1,10 @@
 #include <stdio.h>
-#include <time.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 typedef struct JobQueue { // thread safe queue
     char* jobs[1024];
@@ -15,17 +15,27 @@ typedef struct JobQueue { // thread safe queue
     pthread_cond_t not_empty; // command variables
     pthread_cond_t not_full;
     bool shutdown; // New flag to signal shutdown
+    long long time;
+    bool log_enabled;
 } JobQueue;
+
+typedef struct {
+    JobQueue* queue;
+    int thread_id; // Unique thread ID
+} WorkerArgs;
 
 
 void* worker_thread(void* arg);
 void create_counter_files(int num_counters);
 void create_threads(int num_threads, int* thread_ids,pthread_t* threads, JobQueue* queue);
 void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads);
-void init_queue(JobQueue* queue);
+void init_queue(JobQueue* queue, long long start_time, bool log_enabled);
 void enqueue(JobQueue* queue, const char* job);
 char* dequeue(JobQueue* queue);
-void execute_command(char* cmd);
+void execute_command(char* cmd, long long start_time, int TID, bool log_enabled);
+void create_thread_files(int num_threads);
+long long get_current_time_in_milliseconds();
+void print_to_log_file(long long curr, char* cmd,int TID);
 
 pthread_mutex_t file_mutexes[100]; // Array of mutexes for files (assuming a maximum of 100 files)
 
@@ -36,9 +46,8 @@ void initialize_file_mutexes() {
     }
 }
 
-
 int main(int argc, char *argv[]) {
-    time_t start_time = time(NULL); // save start time of the program
+    long long start_time = get_current_time_in_milliseconds(); // save start time of the program
     
     if (argc != 5) { 
         printf("Error! Number of arguments isn't 5\n");
@@ -60,18 +69,25 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    init_queue(queue);
+    init_queue(queue, start_time, log_enabled);
 
     create_counter_files(num_counters);
+    if (log_enabled) {
+        create_thread_files(num_threads);
+    }
     create_threads(num_threads,thread_ids,threads, queue);
     read_lines(cmdfile, thread_ids, threads, queue, num_threads);
     fclose(cmdfile); 
 
     //wait for background  to empty
     pthread_mutex_lock(&queue->lock);
-    queue->shutdown = true;
-    pthread_cond_broadcast(&queue->not_empty); // Wake all threads
+    while (queue->count > 0) {
+        pthread_cond_wait(&queue->not_empty, &queue->lock); // Wait for workers to process all jobs
+    }
+    queue->shutdown = true; // Signal shutdown only after queue is empty
+    pthread_cond_broadcast(&queue->not_empty); // Wake all threads to terminate
     pthread_mutex_unlock(&queue->lock);
+
 
     for (int i = 0; i < num_threads; i++) {
         pthread_join(threads[i], NULL);
@@ -79,34 +95,45 @@ int main(int argc, char *argv[]) {
 
     free(threads);
     free(queue);
+    pthread_mutex_lock(&queue->lock);
+    // clean up mutexes
+    pthread_mutex_destroy(&queue->lock);
+    pthread_cond_destroy(&queue->not_empty);
+    pthread_cond_destroy(&queue->not_full);
 
     return 0;
 }
 
 void* worker_thread(void* arg) {
-    JobQueue* queue = (JobQueue*)arg;
+    WorkerArgs* args = (WorkerArgs*)arg; // Cast to WorkerArgs*
+    JobQueue* queue = args->queue;
+    int thread_id = args->thread_id; // Get the thread ID
+
     while (1) {
         char* job = dequeue(queue);
         if (job == NULL) { // Shutdown signal or no more jobs
             break;
         }
-
         char* token = strtok(job, ";");
         while (token != NULL) {
-            execute_command(token);
+            execute_command(token, queue->time, thread_id, queue->log_enabled);
             token = strtok(NULL, ";");
         }
         free(job); // Free the dequeued job
     }
+    free(args);
     return NULL;
 }
 
 
-void init_queue(JobQueue* queue) {
+void init_queue(JobQueue* queue, long long start_time, bool log_enabled) {
     queue->front = 0;
     queue->rear = 0;
     queue->count = 0;
     queue->shutdown = false;
+    queue->time = start_time;
+    queue->log_enabled = log_enabled;
+    memset(queue->jobs,0,sizeof(queue->jobs));
     pthread_mutex_init(&queue->lock, NULL);
     pthread_cond_init(&queue->not_empty, NULL);
     pthread_cond_init(&queue->not_full, NULL);
@@ -156,7 +183,11 @@ char* dequeue(JobQueue* queue) {
 }
 
 // exectue a cmd by a worker
-void execute_command(char* cmd) {
+void execute_command(char* cmd, long long start_time, int TID, bool log_enabled) {
+    if (log_enabled) {
+        long long curr_time = get_current_time_in_milliseconds();
+        print_to_log_file(curr_time-start_time, cmd, TID);
+    }
     char* cmd1 = strtok(cmd, " ");
     char* cmd2 = strtok(NULL, "");
     if (strcmp(cmd1, "increment") != 0 &&
@@ -166,7 +197,6 @@ void execute_command(char* cmd) {
     }
 
     int number = atoi(cmd2); // Convert cmd2 to an integer
-    pthread_mutex_lock(&file_mutexes[number]); // Lock the mutex for the file
 
     char filename[14];
     snprintf(filename, sizeof(filename), "count%02d.txt", number);
@@ -176,18 +206,19 @@ void execute_command(char* cmd) {
         usleep(x * 1000); // Sleep in microseconds
     }    
     else if (strcmp(cmd1, "increment") == 0) {
+        pthread_mutex_lock(&file_mutexes[number]); // Lock the mutex for the file
         FILE* file = fopen(filename, "r");
         long long int value;
         fscanf(file, "%lld", &value);
-        printf("initial val: %lld\n",value);
         fclose(file);
 
         file = fopen(filename, "w");
         fprintf(file, "%lld\n", value + 1);
-        printf("updated val: %lld\n",value+1);
         fclose(file);
+        pthread_mutex_unlock(&file_mutexes[number]); // Unlock the mutex for the file
 
     } else if (strcmp(cmd1, "decrement") == 0) {
+        pthread_mutex_lock(&file_mutexes[number]); // Lock the mutex for the file
         FILE* file = fopen(filename, "r");
         long long int value;
         fscanf(file, "%lld", &value);
@@ -196,9 +227,8 @@ void execute_command(char* cmd) {
         file = fopen(filename, "w");
         fprintf(file, "%lld\n", value - 1);
         fclose(file);
+        pthread_mutex_unlock(&file_mutexes[number]); // Unlock the mutex for the file
     }
-
-    pthread_mutex_unlock(&file_mutexes[number]); // Unlock the mutex for the file
 }
 
 
@@ -216,16 +246,33 @@ void create_counter_files(int num_counters) {
     }
 }
 
+void create_thread_files(int num_threads) {
+    for (int i = 0; i < num_threads; i++) {
+        char filename[21]; 
+        snprintf(filename, sizeof(filename), "thread%04d.txt", i);
+        FILE *file = fopen(filename, "w");
+        if (file == NULL) {
+            perror("Error creating file");
+        }
+        fprintf(file, "0");
+        fclose(file);
+    }
+}
+
 void create_threads(int num_threads, int* thread_ids, pthread_t* threads, JobQueue* queue) { 
     if (threads == NULL) {
         perror("Failed to allocate memory");
     }
 
     for (int i = 0; i < num_threads; i++) {
-        thread_ids[i] = i + 1; // Assign a unique ID to each thread
-        if (pthread_create(&threads[i], NULL, worker_thread, queue) != 0) {
+        thread_ids[i] = i; // Assign a unique ID to each thread
+        WorkerArgs* args = malloc(sizeof(WorkerArgs));
+        args->queue = queue;
+        args->thread_id = thread_ids[i]; // Pass the unique thread ID
+
+        if (pthread_create(&threads[i], NULL, worker_thread, args) != 0) {
             perror("Failed to create thread");
-            free(threads);
+            free(args); // Free memory if thread creation fails
         }
     }
 }
@@ -252,8 +299,6 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
         else if (strcmp(token, "dispatcher_wait") == 0) {
             pthread_mutex_lock(&queue->lock);
             while (queue->count > 0) {
-                printf("Dispatcher: Waiting for all worker threads to complete...\n");
-                printf(" count is %d\n", queue->count);
                 pthread_cond_wait(&queue->not_empty, &queue->lock);
             }
             pthread_mutex_unlock(&queue->lock);
@@ -275,15 +320,32 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
 
             for (int i = 0 ; i < times; i++){
                 strcpy(temp_line, org_line);
-                printf("im here, line is %s\n", temp_line);        
                 token = strtok(temp_line,";");
                 while (token != NULL){
                     enqueue(queue, token);
-                    printf("token is %s\n", token); 
                     token = strtok(NULL, ";");
                     }
                 }
             }
         }
 
+}
+
+long long get_current_time_in_milliseconds() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL); // Get the current time
+
+    // Convert to milliseconds
+    long long milliseconds = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return milliseconds;
+}
+
+void print_to_log_file(long long curr_time, char* cmd,int TID) {
+    printf("TID: %d\n", TID);
+    char filename[14];
+    snprintf(filename, sizeof(filename), "thread%04d.txt", TID);
+
+    FILE* file = fopen(filename, "a");
+    fscanf(file, "TIME %lld: START job %s", curr_time, cmd);
+    fclose(file);
 }
