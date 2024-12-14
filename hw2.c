@@ -27,10 +27,20 @@ void enqueue(JobQueue* queue, const char* job);
 char* dequeue(JobQueue* queue);
 void execute_command(char* cmd);
 
+pthread_mutex_t file_mutexes[100]; // Array of mutexes for files (assuming a maximum of 100 files)
+
+// Initialize all mutexes
+void initialize_file_mutexes() {
+    for (int i = 0; i < 100; i++) {
+        pthread_mutex_init(&file_mutexes[i], NULL);
+    }
+}
+
+
 int main(int argc, char *argv[]) {
     time_t start_time = time(NULL); // save start time of the program
     
-    if (argc != 5) { // should it be 4 or 5?
+    if (argc != 5) { 
         perror("Error! Number of arguments isn't 5");
     }
 
@@ -53,13 +63,11 @@ int main(int argc, char *argv[]) {
     init_queue(queue);
 
     create_counter_files(num_counters);
-
     create_threads(num_threads,thread_ids,threads, queue);
-
     read_lines(cmdfile, thread_ids, threads, queue, num_threads);
     fclose(cmdfile); 
 
-    // wait for background  to empty
+    //wait for background  to empty
     pthread_mutex_lock(&queue->lock);
     queue->shutdown = true;
     pthread_cond_broadcast(&queue->not_empty); // Wake all threads
@@ -68,7 +76,6 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < num_threads; i++) {
         pthread_join(threads[i], NULL);
     }
-    printf("All workers have terminated.\n");
 
     free(threads);
     free(queue);
@@ -79,28 +86,16 @@ int main(int argc, char *argv[]) {
 void* worker_thread(void* arg) {
     JobQueue* queue = (JobQueue*)arg;
     while (1) {
-        pthread_mutex_lock(&queue->lock);
-        if (queue->shutdown && queue->count == 0) {
-            pthread_mutex_unlock(&queue->lock);
-            break; // Exit the loop and thread
-        }
-        pthread_mutex_unlock(&queue->lock);
-
         char* job = dequeue(queue);
-
-        if (job == NULL) {
-            continue;
+        if (job == NULL) { // Shutdown signal or no more jobs
+            break;
         }
-        // Parse and execute commands in the job
-        //printf("job: %s\n", job);
         char* token = strtok(job, ";");
         while (token != NULL) {
-            printf("token: %s\n", token);
             execute_command(token);
             token = strtok(NULL, ";");
         }
-        token ='\0';
-        free(job);
+        free(job); // Free the dequeued job
     }
     return NULL;
 }
@@ -117,65 +112,109 @@ void init_queue(JobQueue* queue) {
 }
 
 void enqueue(JobQueue* queue, const char* job) {
-    pthread_mutex_lock(&queue->lock); // lock the mutex - ensures only one thread can modify the queue at a time
-    while (queue->count == 1024) { // if queue full - wait
+    pthread_mutex_lock(&queue->lock);
+
+    // If shutdown is active, reject new jobs
+    if (queue->shutdown) {
+        pthread_mutex_unlock(&queue->lock);
+        return; // Do not enqueue
+    }
+
+    while (queue->count == 1024) { // If queue is full, wait
         pthread_cond_wait(&queue->not_full, &queue->lock);
     }
-    queue->jobs[queue->rear] = strdup(job); // adds the job
-    queue->rear = (queue->rear + 1) % 1024;
-    queue->count = queue->count + 1;
-    pthread_cond_broadcast(&queue->not_empty); // ells all threads that the queue isnt empty
-    pthread_mutex_unlock(&queue->lock); // unlocks mutex
+
+    // Add the job to the queue
+    queue->jobs[queue->rear] = strdup(job); // Duplicate job string
+    queue->rear = (queue->rear + 1) % 1024; // Circular queue logic
+    queue->count++;
+
+    pthread_cond_signal(&queue->not_empty); // Notify one waiting thread
+    pthread_mutex_unlock(&queue->lock);
 }
 
-//our problen is that queue count is always 0!!! 
+
 char* dequeue(JobQueue* queue) {
-    //printf("inside dequeue");
     pthread_mutex_lock(&queue->lock);
-    while (queue->count == 0) { // if queue empty - wait
+    while (queue->count == 0 && !queue->shutdown) {
         pthread_cond_wait(&queue->not_empty, &queue->lock);
     }
-    char* job = queue->jobs[queue->front]; // get job
-    queue->front = (queue->front + 1)%1024;
-    queue->count = queue->count - 1;
-    pthread_cond_broadcast(&queue->not_full); // tells all threads that there is space in the queue for new jobs
-    pthread_mutex_unlock(&queue->lock); 
+    if (queue->shutdown && queue->count == 0) {
+        pthread_mutex_unlock(&queue->lock);
+        return NULL; // Return NULL to indicate shutdown
+    }
+    char* job = queue->jobs[queue->front];
+    queue->front = (queue->front + 1) % 1024;
+    queue->count--;
+    pthread_cond_signal(&queue->not_full); // Signal only one thread
+    pthread_mutex_unlock(&queue->lock);
     return job;
 }
 
 void execute_command(char* cmd) {
-
     char* cmd1 = strtok(cmd, " ");
     char* cmd2 = strtok(NULL, "");
-    char filename[14];
+    if (strcmp(cmd1, "increment") != 0 &&
+        strcmp(cmd1, "decrement") != 0 &&
+        strcmp(cmd1, "sleep") != 0 &&
+        strcmp(cmd1, "repeat") != 0) {
+        return;
+    }
+
     int number = atoi(cmd2); // Convert cmd2 to an integer
+    pthread_mutex_lock(&file_mutexes[number]); // Lock the mutex for the file
+
+    char filename[14];
     snprintf(filename, sizeof(filename), "count%02d.txt", number);
-    printf("cmd1: %s, cmd2: %s\n",cmd1,cmd2);
 
     if (strcmp(cmd1, "msleep") == 0) {
         int x = atoi(cmd2);
         usleep(x * 1000); // Sleep in microseconds
-    } else if (strcmp(cmd1, "increment") == 0) {
-        FILE* file = fopen(filename, "r"); // opens file for reading and writing    
+    }    
+    else if (strcmp(cmd1, "increment") == 0) {
+        FILE* file = fopen(filename, "r");
+        if (file == NULL) {
+            perror("Error opening file for reading");
+            pthread_mutex_unlock(&file_mutexes[number]); // Unlock before returning
+            return;
+        }
         int value;
-        fscanf(file, "%d", &value); // read value in file
+        fscanf(file, "%d", &value);
         fclose(file);
+
         file = fopen(filename, "w");
-        fprintf(file, "%d\n", value + 1); // write the new value
+        if (file == NULL) {
+            perror("Error opening file for writing");
+            pthread_mutex_unlock(&file_mutexes[number]); // Unlock before returning
+            return;
+        }
+        fprintf(file, "%d\n", value + 1);
         fclose(file);
-        
+
     } else if (strcmp(cmd1, "decrement") == 0) {
-        FILE* file = fopen(filename, "r"); // opens file for reading and writing    
+        FILE* file = fopen(filename, "r");
+        if (file == NULL) {
+            perror("Error opening file for reading");
+            pthread_mutex_unlock(&file_mutexes[number]); // Unlock before returning
+            return;
+        }
         int value;
-        fscanf(file, "%d", &value); // read value in file
+        fscanf(file, "%d", &value);
         fclose(file);
+
         file = fopen(filename, "w");
-        fprintf(file, "%d\n", value - 1); // write the new value
+        if (file == NULL) {
+            perror("Error opening file for writing");
+            pthread_mutex_unlock(&file_mutexes[number]); // Unlock before returning
+            return;
+        }
+        fprintf(file, "%d\n", value - 1);
         fclose(file);
     }
-    cmd1 ='\0';
-    cmd2 ='\0';
+
+    pthread_mutex_unlock(&file_mutexes[number]); // Unlock the mutex for the file
 }
+
 
 void create_counter_files(int num_counters) {
     // create counter files - should we put it in a function?
@@ -243,5 +282,3 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
         }
 
 }
-
-
