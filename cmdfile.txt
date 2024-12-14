@@ -1,4 +1,4 @@
 dispatcher_msleep 500
 worker increment 3
 worker increment 3
-worker decrement 3
+worker increment 3

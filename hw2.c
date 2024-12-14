@@ -173,41 +173,23 @@ void execute_command(char* cmd) {
     }    
     else if (strcmp(cmd1, "increment") == 0) {
         FILE* file = fopen(filename, "r");
-        if (file == NULL) {
-            perror("Error opening file for reading");
-            pthread_mutex_unlock(&file_mutexes[number]); // Unlock before returning
-            return;
-        }
         int value;
         fscanf(file, "%d", &value);
+        printf("initial val: %d\n",value);
         fclose(file);
 
         file = fopen(filename, "w");
-        if (file == NULL) {
-            perror("Error opening file for writing");
-            pthread_mutex_unlock(&file_mutexes[number]); // Unlock before returning
-            return;
-        }
         fprintf(file, "%d\n", value + 1);
+        printf("updated val: %d\n",value+1);
         fclose(file);
 
     } else if (strcmp(cmd1, "decrement") == 0) {
         FILE* file = fopen(filename, "r");
-        if (file == NULL) {
-            perror("Error opening file for reading");
-            pthread_mutex_unlock(&file_mutexes[number]); // Unlock before returning
-            return;
-        }
         int value;
         fscanf(file, "%d", &value);
         fclose(file);
 
         file = fopen(filename, "w");
-        if (file == NULL) {
-            perror("Error opening file for writing");
-            pthread_mutex_unlock(&file_mutexes[number]); // Unlock before returning
-            return;
-        }
         fprintf(file, "%d\n", value - 1);
         fclose(file);
     }
