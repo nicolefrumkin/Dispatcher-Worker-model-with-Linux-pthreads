@@ -41,15 +41,15 @@ int main(int argc, char *argv[]) {
     time_t start_time = time(NULL); // save start time of the program
     
     if (argc != 5) { 
-        perror("Error! Number of arguments isn't 5");
+        printf("Error! Number of arguments isn't 5\n");
+        return 1;
     }
 
     // convert str to int
     int num_counters = atoi(argv[3]); 
     int num_threads = atoi(argv[2]);
     bool log_enabled = atoi(argv[4]);
-    long long int counter_arr[100] = {0};
-    memset(counter_arr,0,sizeof(counter_arr));
+
     int thread_ids[4096] = {0}; //its required to create num_threads new threads
     pthread_t* threads = malloc(num_threads * sizeof(pthread_t));
     JobQueue* queue = (JobQueue*)malloc(sizeof(JobQueue)); //make sure its one queue
@@ -90,6 +90,7 @@ void* worker_thread(void* arg) {
         if (job == NULL) { // Shutdown signal or no more jobs
             break;
         }
+
         char* token = strtok(job, ";");
         while (token != NULL) {
             execute_command(token);
@@ -146,18 +147,21 @@ char* dequeue(JobQueue* queue) {
     char* job = queue->jobs[queue->front];
     queue->front = (queue->front + 1) % 1024;
     queue->count--;
+    if (queue->count == 0) {
+        pthread_cond_broadcast(&queue->not_empty);
+    }
     pthread_cond_signal(&queue->not_full); // Signal only one thread
     pthread_mutex_unlock(&queue->lock);
     return job;
 }
 
+// exectue a cmd by a worker
 void execute_command(char* cmd) {
     char* cmd1 = strtok(cmd, " ");
     char* cmd2 = strtok(NULL, "");
     if (strcmp(cmd1, "increment") != 0 &&
         strcmp(cmd1, "decrement") != 0 &&
-        strcmp(cmd1, "sleep") != 0 &&
-        strcmp(cmd1, "repeat") != 0) {
+        strcmp(cmd1, "msleep") != 0)  {
         return;
     }
 
@@ -173,24 +177,24 @@ void execute_command(char* cmd) {
     }    
     else if (strcmp(cmd1, "increment") == 0) {
         FILE* file = fopen(filename, "r");
-        int value;
-        fscanf(file, "%d", &value);
-        printf("initial val: %d\n",value);
+        long long int value;
+        fscanf(file, "%lld", &value);
+        printf("initial val: %lld\n",value);
         fclose(file);
 
         file = fopen(filename, "w");
-        fprintf(file, "%d\n", value + 1);
-        printf("updated val: %d\n",value+1);
+        fprintf(file, "%lld\n", value + 1);
+        printf("updated val: %lld\n",value+1);
         fclose(file);
 
     } else if (strcmp(cmd1, "decrement") == 0) {
         FILE* file = fopen(filename, "r");
-        int value;
-        fscanf(file, "%d", &value);
+        long long int value;
+        fscanf(file, "%lld", &value);
         fclose(file);
 
         file = fopen(filename, "w");
-        fprintf(file, "%d\n", value - 1);
+        fprintf(file, "%lld\n", value - 1);
         fclose(file);
     }
 
@@ -207,7 +211,7 @@ void create_counter_files(int num_counters) {
         if (file == NULL) {
             perror("Error creating file");
         }
-        fprintf(file, "0\n");
+        fprintf(file, "0");
         fclose(file);
     }
 }
@@ -242,24 +246,43 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
 
         else if (strcmp(token, "dispatcher_msleep") == 0) {
             int x = atoi(strtok(NULL, "\n"));
-            // time_t start_time = time(NULL);
-            // char* ts = ctime(&start_time);
-            // printf("time is: %s\n", ts);
             usleep(x*1000);
-            // time_t end_time = time(NULL);
-            // char* te = ctime(&end_time);
-            // printf("time is: %s\n", te);
             continue;
         }
         else if (strcmp(token, "dispatcher_wait") == 0) {
-            for (int i=0; i < num_threads; i++){
-                pthread_join(threads[i],NULL);
+            pthread_mutex_lock(&queue->lock);
+            while (queue->count > 0) {
+                printf("Dispatcher: Waiting for all worker threads to complete...\n");
+                printf(" count is %d\n", queue->count);
+                pthread_cond_wait(&queue->not_empty, &queue->lock);
             }
+            pthread_mutex_unlock(&queue->lock);
             continue;
         }
 
         else if (strcmp(token, "worker") == 0) {
-                enqueue(queue, strtok(NULL, ""));
+            char temp_line[1024];
+            char org_line[1024];
+            int times = 1;
+
+            strcpy(org_line, strtok(NULL,""));
+            strcpy(temp_line, org_line);
+
+            char* token1 = strtok(temp_line, " ");
+            if (strcmp(token1, "repeat") == 0) { // if repeat from copied line
+                times = atoi(strtok(NULL, ";")); 
+            }
+
+            for (int i = 0 ; i < times; i++){
+                strcpy(temp_line, org_line);
+                printf("im here, line is %s\n", temp_line);        
+                token = strtok(temp_line,";");
+                while (token != NULL){
+                    enqueue(queue, token);
+                    printf("token is %s\n", token); 
+                    token = strtok(NULL, ";");
+                    }
+                }
             }
         }
 
