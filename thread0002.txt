@@ -1,1 +1,29 @@
-0
+TIME 1519: START job  increment 1
+TIME 1520: END job  increment
+TIME 1520: START job  increment 3
+TIME 1525: END job  increment
+TIME 1525: START job  decrement 9
+TIME 1527: END job  decrement
+TIME 1527: START job  increment 1
+TIME 1527: END job  increment
+TIME 1527: START job repeat 10
+TIME 1527: START job  msleep 1
+TIME 1528: END job  msleep
+TIME 1528: START job  increment 1
+TIME 1529: END job  increment
+TIME 1529: START job repeat 10
+TIME 1529: START job  msleep 1
+TIME 1531: END job  msleep
+TIME 1531: START job  increment 1
+TIME 1531: END job  increment
+TIME 1531: START job repeat 10
+TIME 1531: START job  msleep 1
+TIME 1533: END job  msleep
+TIME 1533: START job repeat 10
+TIME 1533: START job  msleep 1
+TIME 1534: END job  msleep
+TIME 1534: START job  increment 1
+TIME 1536: END job  increment
+TIME 1536: START job ¯´³¿
+TIME 1729: START job  msleep 2
+TIME 1732: END job  msleep

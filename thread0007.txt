@@ -1,1 +1,5 @@
-0
+TIME 1520: START job repeat 3
+TIME 1520: START job  msleep 50
+TIME 1572: END job  msleep
+TIME 1730: START job  increment 2
+TIME 1738: END job  increment

@@ -1,1 +1,12 @@
-0
+TIME 1524: START job  increment 7
+TIME 1525: END job  increment
+TIME 1525: START job  decrement 8
+TIME 1525: END job  decrement
+TIME 1525: START job  decrement 9
+TIME 1526: END job  decrement
+TIME 1526: START job msleep 10
+TIME 1536: END job msleep
+TIME 1729: START job  increment 2
+TIME 1731: END job  increment
+TIME 1732: START job  increment 2
+TIME 1737: END job  increment

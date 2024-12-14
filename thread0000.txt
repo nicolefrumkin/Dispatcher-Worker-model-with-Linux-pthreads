@@ -1,1 +1,5 @@
-0
+TIME 1516: START job msleep 200
+TIME 1721: END job msleep
+TIME 1731: START job repeat 5
+TIME 1731: START job  msleep 2
+TIME 1737: END job  msleep
