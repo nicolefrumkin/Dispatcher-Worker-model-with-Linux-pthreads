@@ -3,8 +3,8 @@ dispatcher_msleep 1000
 dispatcher_wait
 worker msleep 200; increment 1; decrement 2; msleep 300
 worker repeat 3; increment 3; msleep 50
-worker increment 4; decrement 5; msleep 100; repeat 2; increment 6
-worker msleep 100; repeat 5; increment 7; msleep 10; decrement 8
+worker increment 4; decrement 5; msleep 100; increment 6
+worker msleep 100; increment 7; msleep 10; decrement 8
 worker increment 0; decrement 9
 worker repeat 2; increment 3; msleep 150; decrement 2
 dispatcher_wait
