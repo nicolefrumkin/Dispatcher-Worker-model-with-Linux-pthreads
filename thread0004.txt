@@ -1,12 +1,22 @@
-TIME 1524: START job  increment 7
-TIME 1525: END job  increment
-TIME 1525: START job  decrement 8
-TIME 1525: END job  decrement
-TIME 1525: START job  decrement 9
-TIME 1526: END job  decrement
-TIME 1526: START job msleep 10
-TIME 1536: END job msleep
-TIME 1729: START job  increment 2
-TIME 1731: END job  increment
-TIME 1732: START job  increment 2
-TIME 1737: END job  increment
+TIME 1517: START job  increment
+TIME 1527: END job  increment
+TIME 1527: START job increment
+TIME 1528: END job increment
+TIME 1528: START job  decrement
+TIME 1528: END job  decrement
+TIME 1528: START job  increment
+TIME 1532: END job  increment
+TIME 1532: START job  decrement
+TIME 1533: END job  decrement
+TIME 1533: START job  increment
+TIME 1533: END job  increment
+TIME 1533: START job  msleep
+TIME 1689: END job  msleep
+TIME 1828: START job  msleep
+TIME 1829: END job  msleep
+TIME 1830: START job  msleep
+TIME 1832: END job  msleep
+TIME 1832: START job  increment
+TIME 1854: END job  increment
+TIME 2038: START job  increment
+TIME 2051: END job  increment

@@ -40,6 +40,13 @@ void print_to_log_file_end(long long curr, char* cmd,int TID);
 
 pthread_mutex_t file_mutexes[100]; // Array of mutexes for files (assuming a maximum of 100 files)
 
+//handling active threads
+pthread_cond_t active_threades_cond;
+pthread_mutex_t active_threades_mutex;
+int active_threades = 0;
+
+
+
 // Initialize all mutexes
 void initialize_file_mutexes() {
     for (int i = 0; i < 100; i++) {
@@ -71,10 +78,14 @@ int main(int argc, char *argv[]) {
     }
 
     init_queue(queue, start_time, log_enabled);
+    //init global counter mutex and cond
+    pthread_mutex_init(&active_threades_mutex, NULL);
+    pthread_cond_init(&active_threades_cond, NULL);
 
     create_counter_files(num_counters);
     if (log_enabled) {
         create_thread_files(num_threads);
+        FILE* file = fopen("dispatcher.txt", "w"); // reset the dispatcher logfile
     }
     create_threads(num_threads,thread_ids,threads, queue);
     read_lines(cmdfile, thread_ids, threads, queue, num_threads, start_time, log_enabled);
@@ -88,7 +99,13 @@ int main(int argc, char *argv[]) {
     queue->shutdown = true; // Signal shutdown only after queue is empty
     pthread_cond_broadcast(&queue->not_empty); // Wake all threads to terminate
     pthread_mutex_unlock(&queue->lock);
-
+    //not sure we need:
+    // pthread_mutex_lock(&active_threades_mutex);
+    // if (active_threades == 0) {
+    //     pthread_cond_broadcast(&active_threades_cond);
+    //     printf("active therds\n");
+    // }
+    // pthread_mutex_unlock(&active_threades_mutex);
 
     for (int i = 0; i < num_threads; i++) {
         pthread_join(threads[i], NULL);
@@ -100,6 +117,7 @@ int main(int argc, char *argv[]) {
     // clean up mutexes
     pthread_mutex_destroy(&queue->lock);
     pthread_cond_destroy(&queue->not_empty);
+    pthread_cond_destroy(&active_threades_cond);
     pthread_cond_destroy(&queue->not_full);
 
     return 0;
@@ -185,16 +203,19 @@ char* dequeue(JobQueue* queue) {
 
 // exectue a cmd by a worker
 void execute_command(char* cmd, long long start_time, int TID, bool log_enabled) {
-    if (log_enabled) {
-        long long curr_time = get_current_time_in_milliseconds();
-        print_to_log_file(curr_time-start_time, cmd, TID);
-    }
     char* cmd1 = strtok(cmd, " ");
     char* cmd2 = strtok(NULL, "");
     if (strcmp(cmd1, "increment") != 0 &&
         strcmp(cmd1, "decrement") != 0 &&
         strcmp(cmd1, "msleep") != 0)  {
         return;
+    }
+    pthread_mutex_lock(&active_threades_mutex);
+    active_threades += 1;
+    pthread_mutex_unlock(&active_threades_mutex);
+    if (log_enabled) {
+        long long curr_time = get_current_time_in_milliseconds();
+        print_to_log_file(curr_time-start_time, cmd, TID);
     }
 
     int number = atoi(cmd2); // Convert cmd2 to an integer
@@ -234,6 +255,14 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
         long long curr_time = get_current_time_in_milliseconds();
         print_to_log_file_end(curr_time-start_time, cmd, TID);
     }
+    pthread_mutex_lock(&active_threades_mutex);
+    active_threades -= 1;
+    printf("checking active threads:%d\n", active_threades);
+    if (active_threades == 0) {
+        pthread_cond_broadcast(&active_threades_cond);
+        printf("broadcasting\n");
+    }
+    pthread_mutex_unlock(&active_threades_mutex);
 }
 
 
@@ -315,12 +344,23 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
                     fprintf(file, "TIME %lld: read cmd line: %s\n", curr_time, line_cpy);
                     fclose(file);
             }
-            pthread_mutex_lock(&queue->lock);
-            while (queue->count > 0) {
-                pthread_cond_wait(&queue->not_empty, &queue->lock);
+
+            //fix me
+            printf("active thereads: %d\n", active_threades);
+            pthread_mutex_lock(&active_threades_mutex);
+            while (active_threades > 0) {
+                pthread_cond_wait(&active_threades_cond, &active_threades_mutex);
             }
-            pthread_mutex_unlock(&queue->lock);
+            pthread_mutex_unlock(&active_threades_mutex);
             continue;
+
+            // pthread_mutex_lock(&queue->lock);
+
+            // while (queue->count > 0) {
+            //     pthread_cond_wait(&queue->not_empty, &queue->lock);
+            // }
+            // pthread_mutex_unlock(&queue->lock);
+            // continue;
         }
 
         else if (strcmp(token, "worker") == 0) {
