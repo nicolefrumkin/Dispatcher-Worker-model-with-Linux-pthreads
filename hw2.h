@@ -46,7 +46,6 @@ pthread_mutex_t active_threades_mutex;
 int active_threades = 0;
 
 
-
 // Initialize all mutexes
 void initialize_file_mutexes() {
     for (int i = 0; i < 100; i++) {
