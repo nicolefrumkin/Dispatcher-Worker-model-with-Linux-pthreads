@@ -5,6 +5,10 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/time.h>
+#define MAX_THREADS 4096
+#define MAX_LINE 1024
+#define MAX_COUNTERS 100
+#define MAX_JOBS 1024
 
 typedef struct JobQueue { // thread safe queue
     char* jobs[1024];
@@ -44,7 +48,6 @@ pthread_mutex_t file_mutexes[100]; // Array of mutexes for files (assuming a max
 pthread_cond_t active_threades_cond;
 pthread_mutex_t active_threades_mutex;
 int active_threades = 0;
-
 
 // Initialize all mutexes
 void initialize_file_mutexes() {

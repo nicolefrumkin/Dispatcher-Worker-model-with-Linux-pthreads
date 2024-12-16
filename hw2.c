@@ -13,7 +13,7 @@ int main(int argc, char *argv[]) {
     int num_threads = atoi(argv[2]);
     bool log_enabled = atoi(argv[4]);
 
-    int thread_ids[4096] = {0}; //its required to create num_threads new threads
+    int thread_ids[MAX_THREADS] = {0}; //its required to create num_threads new threads
     pthread_t* threads = malloc(num_threads * sizeof(pthread_t));
     JobQueue* queue = (JobQueue*)malloc(sizeof(JobQueue)); //make sure its one queue
 
@@ -44,14 +44,13 @@ int main(int argc, char *argv[]) {
     fclose(cmdfile); 
 
     //wait for background  to empty
-    pthread_mutex_lock(&queue->lock);
-    while (queue->count > 0) {
-        pthread_cond_wait(&queue->not_empty, &queue->lock); // Wait for workers to process all jobs
+    pthread_mutex_lock(&active_threades_mutex);
+    while (active_threades > 0) {
+        pthread_cond_wait(&active_threades_cond, &active_threades_mutex);
     }
     queue->shutdown = true; // Signal shutdown only after queue is empty
     pthread_cond_broadcast(&queue->not_empty); // Wake all threads to terminate
-    pthread_cond_broadcast(&queue->not_full);
-    pthread_mutex_unlock(&queue->lock);
+    pthread_mutex_unlock(&active_threades_mutex);
 
     for (int i = 0; i < num_threads; i++) {
         pthread_join(threads[i], NULL);
@@ -109,23 +108,14 @@ void init_queue(JobQueue* queue, long long start_time, bool log_enabled) {
 
 void enqueue(JobQueue* queue, const char* job) {
     pthread_mutex_lock(&queue->lock);
-
-    // If shutdown is active, reject new jobs
-    if (queue->shutdown) {
-        pthread_mutex_unlock(&queue->lock);
-        return; // Do not enqueue
-    }
-
-    while (queue->count == 1024) { // If queue is full, wait
+    while (queue->count == MAX_JOBS) { // If queue is full, wait
         pthread_cond_wait(&queue->not_full, &queue->lock);
     }
-
     // Add the job to the queue
     queue->jobs[queue->rear] = strdup(job); // Duplicate job string
-    queue->rear = (queue->rear + 1) % 1024; // Circular queue logic
+    queue->rear = (queue->rear + 1) % MAX_JOBS; // Circular queue logic
     queue->count++;
 
-    pthread_cond_signal(&queue->not_empty); // Notify one waiting thread
     pthread_mutex_unlock(&queue->lock);
 }
 
@@ -140,12 +130,8 @@ char* dequeue(JobQueue* queue) {
         return NULL; // Return NULL to indicate shutdown
     }
     char* job = queue->jobs[queue->front];
-    queue->front = (queue->front + 1) % 1024;
+    queue->front = (queue->front + 1) % MAX_JOBS;
     queue->count--;
-    if (queue->count == 0) {
-        pthread_cond_broadcast(&queue->not_empty);
-    }
-    pthread_cond_signal(&queue->not_full); // Signal only one thread
     pthread_mutex_unlock(&queue->lock);
     return job;
 }
@@ -261,13 +247,13 @@ void create_threads(int num_threads, int* thread_ids, pthread_t* threads, JobQue
 
 
 void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads, long long start_time, bool log_en) {
-    char line[1024]; // Buffer to hold each line
+    char line[MAX_LINE]; // Buffer to hold each line
     char* token;     // Token for parsing
     const char* delimiter = ";"; // Command delimiter
 
     while (fgets(line, sizeof(line), cmdfile)) {
         line[strcspn(line, "\n")] = '\0';
-        char line_cpy[1024];
+        char line_cpy[MAX_LINE];
         strcpy(line_cpy, line);
         // check if worker or dispatcher
         token = strtok(line, " "); // Split by space
@@ -304,8 +290,8 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
         }
 
         else if (strcmp(token, "worker") == 0) {
-            char temp_line[1024];
-            char org_line[1024];
+            char temp_line[MAX_LINE];
+            char org_line[MAX_LINE];
             int times = 1;
 
             strcpy(org_line, strtok(NULL,""));
