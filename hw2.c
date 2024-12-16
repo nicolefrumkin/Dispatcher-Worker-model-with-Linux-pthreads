@@ -195,7 +195,6 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
     active_threades -= 1;
     if (active_threades == 0) {
         pthread_cond_broadcast(&active_threades_cond);
-        printf("broadcasting\n");
     }
     pthread_mutex_unlock(&active_threades_mutex);
 }
@@ -245,7 +244,6 @@ void create_threads(int num_threads, int* thread_ids, pthread_t* threads, JobQue
     }
 }
 
-
 void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads, long long start_time, bool log_en) {
     char line[MAX_LINE]; // Buffer to hold each line
     char* token;     // Token for parsing
@@ -279,7 +277,6 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
                     fprintf(file, "TIME %lld: read cmd line: %s\n", curr_time, line_cpy);
                     fclose(file);
             }
-
             
             pthread_mutex_lock(&active_threades_mutex);
             while (active_threades > 0) {
@@ -289,30 +286,57 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
             continue;
         }
 
+        // ididnt finish yet!!!!
         else if (strcmp(token, "worker") == 0) {
             char temp_line[MAX_LINE];
             char org_line[MAX_LINE];
             int times = 1;
 
-            strcpy(org_line, strtok(NULL,""));
-            strcpy(temp_line, org_line);
+            strcpy(org_line, strtok(NULL,""));// saving the original line
+            strcpy(temp_line, org_line); // using temp line to not ruin the original with tokens
+            printf("line org line is %s\n", org_line);
 
-            char* token1 = strtok(temp_line, " ");
-            if (strcmp(token1, "repeat") == 0) { // if repeat from copied line
-                times = atoi(strtok(NULL, ";")); 
-            }
-
-            for (int i = 0 ; i < times; i++){
-                strcpy(temp_line, org_line);
-                token = strtok(temp_line,";");
-                while (token != NULL){
-                    enqueue(queue, token);
-                    token = strtok(NULL, ";");
+            char* token1 = strtok(temp_line, ";");
+            printf("token1 is %s\n", token1);
+            while (token1 != NULL){
+                if (strstr(token1, "repeat") != NULL) { // if token inculds repeat
+                    times = atoi(strtok(token1, "repeat ")); //get the repeat times
+                    char* pos = strstr(org_line,"repeat ");
+                    printf("org line is %s\n", org_line);
+                    // for (int i = 0 ; i < times; i++){
+                    //     strcpy(temp_line, org_line);
+                    //     printf("temp line is %s\n", temp_line);
+                    //     token = strtok(temp_line,";");
+                    //     while (token != NULL){
+                    //         enqueue(queue, token);
+                    //         token = strtok(NULL, ";");
+                    //         }
+                    //         break;
+                    //     }
+                    // continue;
                     }
+                else{
+                    enqueue(queue, token1);
                 }
-            }
-        }
+                token1 = strtok(NULL, ";");
+                }
+            }   
+            // char* token1 = strtok(temp_line, " ");
+            // if (strcmp(token1, "repeat") == 0) { // if repeat from copied line
+            //     times = atoi(strtok(NULL, ";")); 
+            // }
 
+            // for (int i = 0 ; i < times; i++){
+            //     strcpy(temp_line, org_line);
+            //     token = strtok(temp_line,";");
+            //     while (token != NULL){
+            //         enqueue(queue, token);
+            //         token = strtok(NULL, ";");
+            //         }
+            //     }
+            // }
+
+        }
 }
 
 long long get_current_time_in_milliseconds() {

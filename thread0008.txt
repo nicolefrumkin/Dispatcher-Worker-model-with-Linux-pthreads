@@ -1,14 +1,2 @@
-TIME 1520: START job  decrement
-TIME 1520: END job  decrement
-TIME 1523: START job increment
-TIME 1525: END job increment
-TIME 1525: START job  decrement
-TIME 1525: END job  decrement
-TIME 1525: START job  increment
-TIME 1526: END job  increment
-TIME 1526: START job  msleep
-TIME 1677: END job  msleep
-TIME 1722: START job  increment
-TIME 1722: END job  increment
-TIME 1722: START job  msleep
-TIME 1725: END job  msleep
+TIME 8: START job  increment
+TIME 8: END job  increment
