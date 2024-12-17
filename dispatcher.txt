@@ -1,0 +1,4 @@
+TIME 16: read cmd line: dispatcher_msleep 500
+TIME 519: read cmd line: dispatcher_msleep 1000
+TIME 1526: read cmd line: dispatcher_wait
+TIME 1527: read cmd line: dispatcher_msleep 200
