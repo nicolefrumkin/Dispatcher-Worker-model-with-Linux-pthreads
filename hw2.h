@@ -5,7 +5,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/time.h>
-#include <math.h>
 #define MAX_THREADS 4096
 #define MAX_LINE 1024
 #define MAX_COUNTERS 100

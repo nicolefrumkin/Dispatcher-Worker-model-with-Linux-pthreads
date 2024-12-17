@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
     
     // calc stats
     total_running_time = get_current_time_in_milliseconds()-start_time;
-    avg_turnaround = roundf((float)sum_turnaround / total_jobs_processed * 1000) / 1000; // Round to 3 digits after the point
+    avg_turnaround = (float)sum_turnaround / total_jobs_processed;
     create_stats_file();
     return 0;
 }
@@ -377,7 +377,7 @@ void create_stats_file(){
     fprintf(file, "total running time: %lld milliseconds\n",total_running_time);
     fprintf(file, "sum of jobs turnaround time: %lld milliseconds\n", sum_turnaround);
     fprintf(file, "min job turnaround time: %lld milliseconds\n", min_turnaround);
-    fprintf(file, "average jobs turnaround time: %f milliseconds\n", avg_turnaround);
+    fprintf(file, "average jobs turnaround time: %.3f milliseconds\n", avg_turnaround);
     fprintf(file, "max job turnaround time: %lld milliseconds\n", max_turnaround);
     fclose(file);
 }
