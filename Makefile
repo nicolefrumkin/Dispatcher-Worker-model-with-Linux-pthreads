@@ -1,11 +1,11 @@
 # Compiler and flags
 CC = gcc
-CFLAGS = -Wall -Wextra -pthread -g
+CFLAGS = -Wall -Wextra -pthread -g -lm
 
 # Files
 SRC = main.c
 OBJ = $(SRC:.c=.o)
-EXEC = hw2_program
+EXEC = hw2
 
 # Targets
 all: $(EXEC)
