@@ -41,19 +41,18 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
 void create_thread_files(int num_threads);
 long long get_current_time_in_milliseconds();
 void print_to_log_file(long long curr, char* cmd,int TID, char* end_or_start);
-void create_stats_file();
+void create_stats_file(long long start_time);
 
 pthread_mutex_t file_mutexes[MAX_COUNTERS]; // Array of mutexes for files (assuming a maximum of 100 files)
 
 //handling active threads
 pthread_cond_t active_threades_cond;
 pthread_mutex_t active_threades_mutex;
+pthread_mutex_t stats_mutex;
 int active_threades = 0;
-long long total_running_time = 0;
 long long sum_turnaround = 0;
 long long min_turnaround = 0;
 long long max_turnaround = 0;
-float avg_turnaround = 0;
 int total_jobs_processed = 0;
 
 // Initialize all mutexes
@@ -61,11 +60,13 @@ void initialize_file_mutexes() {
     for (int i = 0; i < MAX_COUNTERS; i++) {
         pthread_mutex_init(&file_mutexes[i], NULL);
     }
+    pthread_mutex_init(&stats_mutex, NULL);
 }
 
-// Initialize all mutexes
 void destroy_file_mutexes() {
     for (int i = 0; i < MAX_COUNTERS; i++) {
         pthread_mutex_destroy(&file_mutexes[i]);
     }
+    pthread_mutex_destroy(&stats_mutex);
 }
+

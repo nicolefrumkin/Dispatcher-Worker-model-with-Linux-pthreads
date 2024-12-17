@@ -1,21 +1,5 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-total running time: 319 milliseconds
-sum of jobs turnaround time: 0 milliseconds
-min job turnaround time: 0 milliseconds
-average jobs turnaround time: -nan milliseconds
-max job turnaround time: 0 milliseconds
-=======
-total running time: 204 milliseconds
-sum of jobs turnaround time: 402 milliseconds
-min job turnaround time: 201 milliseconds
-average jobs turnaround time: 201.000000 milliseconds
-max job turnaround time: 201 milliseconds
->>>>>>> eff2994 (fixed stats)
-=======
-total running time: 246 milliseconds
-sum of jobs turnaround time: 453 milliseconds
-min job turnaround time: 226 milliseconds
-average jobs turnaround time: 226.500 milliseconds
-max job turnaround time: 227 milliseconds
->>>>>>> f901608 (fixed stats)
+total running time: 2290 milliseconds
+sum of jobs turnaround time: 1466 milliseconds
+min job turnaround time: 6 milliseconds
+average jobs turnaround time: 146.600 milliseconds
+max job turnaround time: 507 milliseconds

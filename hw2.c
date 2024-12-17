@@ -56,9 +56,6 @@ int main(int argc, char *argv[]) {
         pthread_join(threads[i], NULL);
     }
 
-    free(threads);
-    free(queue);
-
     // clean up mutexes
     pthread_mutex_destroy(&queue->lock);
     pthread_mutex_destroy(&active_threades_mutex);
@@ -67,11 +64,13 @@ int main(int argc, char *argv[]) {
     pthread_cond_destroy(&queue->not_empty);
     pthread_cond_destroy(&queue->not_full);
     pthread_cond_destroy(&active_threades_cond);
-    
+
     // calc stats
-    total_running_time = get_current_time_in_milliseconds()-start_time;
-    avg_turnaround = (float)sum_turnaround / total_jobs_processed;
-    create_stats_file();
+    create_stats_file(start_time);
+
+    free(threads);
+    free(queue);
+    
     return 0;
 }
 
@@ -82,17 +81,44 @@ void* worker_thread(void* arg) {
 
     while (1) {
         long long dispatch_time;
+        char temp_line[MAX_LINE];
+        int times = 1;
+        char* token = NULL;
+        char* token1_ptr;
+        char* token_ptr;
+
         char* job = dequeue(queue, &dispatch_time);
-        if (job == NULL) { // Shutdown signal or no more jobs
+        if (job == NULL) { 
             break;
         }
-        char* token = strtok(job, ";");
-        while (token != NULL) {
-            execute_command(token, queue->time, thread_id, queue->log_enabled);
-            token = strtok(NULL, ";");
+        strcpy(temp_line, job); // using temp line to not ruin the original with tokens
+        char* token1 = strtok_r(temp_line, ";", &token1_ptr);
+        while (token1 != NULL){
+            if (strstr(token1, "repeat") != NULL) { // if token inculds repeat
+                times = atoi(strtok_r(token1, "repeat ", &token1_ptr)); //get the repeat times
+                printf("times is: %d\n", times);
+                for (int i = 0 ; i < times; i++){
+                    strcpy(temp_line, job);
+                    token = strtok_r(temp_line, ";",&token_ptr);
+                    while (strstr(token, "repeat") == NULL){
+                        token = strtok_r(NULL, ";", &token_ptr);
+                        }
+                    token = strtok_r(NULL, ";", &token_ptr);
+                    while (token != NULL){
+                        execute_command(token, queue->time, thread_id, queue->log_enabled);
+                        token = strtok_r(NULL, ";", &token_ptr);
+                        }
+                    }
+                break;
+                }
+            else{
+                execute_command(token1, queue->time, thread_id, queue->log_enabled);
+                token1 = strtok_r(NULL,";", &token1_ptr);
+            }
         }
+        
         long long completion_time = get_current_time_in_milliseconds();
-        pthread_mutex_lock(&active_threades_mutex);
+        pthread_mutex_lock(&stats_mutex);
         long long turnaround_time = completion_time - dispatch_time;
 
         // Update turnaround statistics
@@ -104,9 +130,7 @@ void* worker_thread(void* arg) {
             max_turnaround = turnaround_time;
         }
         total_jobs_processed++;
-        pthread_mutex_unlock(&active_threades_mutex);
-
-        free(job); // Free the dequeued job
+        pthread_mutex_unlock(&stats_mutex);
     }
     free(args);
     return NULL;
@@ -270,14 +294,14 @@ void create_threads(int num_threads, int* thread_ids, pthread_t* threads, JobQue
 void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads, long long start_time, bool log_en) {
     char line[MAX_LINE]; // Buffer to hold each line
     char* token;     // Token for parsing
-    const char* delimiter = ";"; // Command delimiter
 
     while (fgets(line, sizeof(line), cmdfile)) {
         line[strcspn(line, "\n")] = '\0';
         char line_cpy[MAX_LINE];
+        char* token_ptr = NULL;
         strcpy(line_cpy, line);
         // check if worker or dispatcher
-        token = strtok(line, " "); // Split by space
+        token = strtok_r(line, " ", &token_ptr); // Split by space
         if (token == NULL) {
             continue; // Skip empty lines
         }
@@ -289,7 +313,12 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
                     fprintf(file, "TIME %lld: read cmd line: %s\n", curr_time, line_cpy);
                     fclose(file);
             }
-            int x = atoi(strtok(NULL, "\n"));
+            char* delay_token = strtok(NULL, "\n");
+            if (delay_token == NULL) {
+                fprintf(stderr, "Error: Invalid dispatcher_msleep command\n");
+                continue;
+            }
+            int x = atoi(delay_token);
             usleep(x*1000);
             continue;
         }
@@ -311,39 +340,7 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
 
         // done - need to test more
         else if (strcmp(token, "worker") == 0) {
-            char temp_line[MAX_LINE];
-            char org_line[MAX_LINE];
-            int times = 1;
-
-            strcpy(org_line, strtok(NULL,""));// saving the original line
-            strcpy(temp_line, org_line); // using temp line to not ruin the original with tokens
-            printf("org line before is %s\n", org_line);
-
-            char* token1 = strtok(temp_line, ";");
-            while (token1 != NULL){
-                printf("token1 is %s\n", token1);
-                if (strstr(token1, "repeat") != NULL) { // if token inculds repeat
-                    times = atoi(strtok(token1, "repeat ")); //get the repeat times
-                    printf("times is: %d\n", times);
-                    for (int i = 0 ; i < times; i++){
-                        strcpy(temp_line, org_line);
-                        token = strtok(temp_line, ";");
-                        while (strstr(token, "repeat") == NULL){
-                            token = strtok(NULL, ";");
-                            }
-                        printf("token last is %s\n", token);
-                        while (token != NULL){
-                            enqueue(queue, token);
-                            token = strtok(NULL, ";");
-                            }
-                        }
-                    break;
-                    }
-                else{
-                    enqueue(queue, token1);
-                }
-                token1 = strtok(NULL, ";");
-                }
+            enqueue(queue, strtok(NULL, ""));
             }   
         }
 }
@@ -365,11 +362,16 @@ void print_to_log_file(long long curr_time, char* cmd,int TID, char* end_or_star
     if (file == NULL) {
         perror("Error opening log file");
     }
-    fprintf(file, "TIME %lld: %s job %s\n",curr_time, end_or_start, cmd);
+    if (cmd[0]==' ') {
+        cmd++;
+    }
+    fprintf(file, "TIME %lld: %s job %s\n",curr_time,end_or_start,cmd);
     fclose(file);
 }
 
-void create_stats_file(){
+void create_stats_file(long long start_time){
+    long long total_running_time = get_current_time_in_milliseconds()-start_time;
+    float avg_turnaround = (float)sum_turnaround / total_jobs_processed;
     FILE* file = fopen("stats.txt", "w");
     if (file == NULL) {
         perror("Error opening stats file");
