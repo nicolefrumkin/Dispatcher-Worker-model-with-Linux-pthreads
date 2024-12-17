@@ -37,7 +37,7 @@ void create_threads(int num_threads, int* thread_ids,pthread_t* threads, JobQueu
 void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads, long long start_time, bool log_en);
 void init_queue(JobQueue* queue, long long start_time, bool log_enabled);
 void enqueue(JobQueue* queue, const char* job);
-char* dequeue(JobQueue* queue);
+char* dequeue(JobQueue* queue, long long *dispatch_time);
 void execute_command(char* cmd, long long start_time, int TID, bool log_enabled);
 void create_thread_files(int num_threads);
 long long get_current_time_in_milliseconds();

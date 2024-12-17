@@ -1,5 +1,13 @@
+<<<<<<< HEAD
 total running time: 319 milliseconds
 sum of jobs turnaround time: 0 milliseconds
 min job turnaround time: 0 milliseconds
 average jobs turnaround time: -nan milliseconds
 max job turnaround time: 0 milliseconds
+=======
+total running time: 204 milliseconds
+sum of jobs turnaround time: 402 milliseconds
+min job turnaround time: 201 milliseconds
+average jobs turnaround time: 201.000000 milliseconds
+max job turnaround time: 201 milliseconds
+>>>>>>> eff2994 (fixed stats)

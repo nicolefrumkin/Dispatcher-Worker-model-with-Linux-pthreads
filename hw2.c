@@ -81,7 +81,8 @@ void* worker_thread(void* arg) {
     int thread_id = args->thread_id; // Get the thread ID
 
     while (1) {
-        char* job = dequeue(queue);
+        long long dispatch_time;
+        char* job = dequeue(queue, &dispatch_time);
         if (job == NULL) { // Shutdown signal or no more jobs
             break;
         }
@@ -91,6 +92,20 @@ void* worker_thread(void* arg) {
             token = strtok(NULL, ";");
         }
         long long completion_time = get_current_time_in_milliseconds();
+        pthread_mutex_lock(&active_threades_mutex);
+        long long turnaround_time = completion_time - dispatch_time;
+
+        // Update turnaround statistics
+        sum_turnaround += turnaround_time;
+        if (turnaround_time < min_turnaround || min_turnaround == 0) {
+            min_turnaround = turnaround_time;
+        }
+        if (turnaround_time > max_turnaround) {
+            max_turnaround = turnaround_time;
+        }
+        total_jobs_processed++;
+        pthread_mutex_unlock(&active_threades_mutex);
+
         free(job); // Free the dequeued job
     }
     free(args);
@@ -127,7 +142,7 @@ void enqueue(JobQueue* queue, const char* job) {
 }
 
 
-char* dequeue(JobQueue* queue) {
+char* dequeue(JobQueue* queue, long long *dispatch_time) {
     pthread_mutex_lock(&queue->lock);
     while (queue->count == 0 && !queue->shutdown) {
         pthread_cond_wait(&queue->not_empty, &queue->lock);
@@ -137,7 +152,7 @@ char* dequeue(JobQueue* queue) {
         return NULL; // Return NULL to indicate shutdown
     }
     char* job = queue->jobs[queue->front];
-    
+    *dispatch_time = queue->dispatch_times[queue->front];
     queue->front = (queue->front + 1) % MAX_JOBS;
     queue->count--;
     pthread_mutex_unlock(&queue->lock);
