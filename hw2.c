@@ -67,7 +67,11 @@ int main(int argc, char *argv[]) {
     pthread_cond_destroy(&queue->not_empty);
     pthread_cond_destroy(&queue->not_full);
     pthread_cond_destroy(&active_threades_cond);
-
+    
+    // calc stats
+    total_running_time = get_current_time_in_milliseconds()-start_time;
+    avg_turnaround = roundf((float)sum_turnaround / total_jobs_processed * 1000) / 1000; // Round to 3 digits after the point
+    create_stats_file();
     return 0;
 }
 
@@ -86,6 +90,7 @@ void* worker_thread(void* arg) {
             execute_command(token, queue->time, thread_id, queue->log_enabled);
             token = strtok(NULL, ";");
         }
+        long long completion_time = get_current_time_in_milliseconds();
         free(job); // Free the dequeued job
     }
     free(args);
@@ -100,6 +105,7 @@ void init_queue(JobQueue* queue, long long start_time, bool log_enabled) {
     queue->shutdown = false;
     queue->time = start_time;
     queue->log_enabled = log_enabled;
+    memset(queue->dispatch_times,0,sizeof(queue->dispatch_times));
     memset(queue->jobs,0,sizeof(queue->jobs));
     pthread_mutex_init(&queue->lock, NULL);
     pthread_cond_init(&queue->not_empty, NULL);
@@ -113,9 +119,10 @@ void enqueue(JobQueue* queue, const char* job) {
     }
     // Add the job to the queue
     queue->jobs[queue->rear] = strdup(job); // Duplicate job string
+    queue->dispatch_times[queue->rear] = get_current_time_in_milliseconds();
     queue->rear = (queue->rear + 1) % MAX_JOBS; // Circular queue logic
     queue->count++;
-
+    pthread_cond_broadcast(&queue->not_empty);
     pthread_mutex_unlock(&queue->lock);
 }
 
@@ -130,6 +137,7 @@ char* dequeue(JobQueue* queue) {
         return NULL; // Return NULL to indicate shutdown
     }
     char* job = queue->jobs[queue->front];
+    
     queue->front = (queue->front + 1) % MAX_JOBS;
     queue->count--;
     pthread_mutex_unlock(&queue->lock);
@@ -150,7 +158,7 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
     pthread_mutex_unlock(&active_threades_mutex);
     if (log_enabled) {
         long long curr_time = get_current_time_in_milliseconds();
-        print_to_log_file(curr_time-start_time, cmd, TID);
+        print_to_log_file(curr_time-start_time, cmd, TID,"START");
     }
 
     int number = atoi(cmd2); // Convert cmd2 to an integer
@@ -166,7 +174,7 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
         pthread_mutex_lock(&file_mutexes[number]); // Lock the mutex for the file
         FILE* file = fopen(filename, "r");
         
-        long long int value;
+        long long value;
         fscanf(file, "%lld", &value);
         fclose(file);
 
@@ -178,7 +186,7 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
     } else if (strcmp(cmd1, "decrement") == 0) {
         pthread_mutex_lock(&file_mutexes[number]); // Lock the mutex for the file
         FILE* file = fopen(filename, "r");
-        long long int value;
+        long long value;
         fscanf(file, "%lld", &value);
         fclose(file);
 
@@ -189,7 +197,7 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
     }
     if (log_enabled) {
         long long curr_time = get_current_time_in_milliseconds();
-        print_to_log_file_end(curr_time-start_time, cmd, TID);
+        print_to_log_file(curr_time-start_time, cmd, TID, "END");
     }
     pthread_mutex_lock(&active_threades_mutex);
     active_threades -= 1;
@@ -348,7 +356,7 @@ long long get_current_time_in_milliseconds() {
     return milliseconds;
 }
 
-void print_to_log_file(long long curr_time, char* cmd,int TID) {
+void print_to_log_file(long long curr_time, char* cmd,int TID, char* end_or_start) {
     char filename[16];
     snprintf(filename, sizeof(filename), "thread%04d.txt", TID);
 
@@ -356,18 +364,19 @@ void print_to_log_file(long long curr_time, char* cmd,int TID) {
     if (file == NULL) {
         perror("Error opening log file");
     }
-    fprintf(file, "TIME %lld: START job %s\n", curr_time, cmd);
+    fprintf(file, "TIME %lld: %s job %s\n",curr_time, end_or_start, cmd);
     fclose(file);
 }
 
-void print_to_log_file_end(long long curr_time, char* cmd,int TID) {
-    char filename[16];
-    snprintf(filename, sizeof(filename), "thread%04d.txt", TID);
-
-    FILE* file = fopen(filename, "a");
+void create_stats_file(){
+    FILE* file = fopen("stats.txt", "w");
     if (file == NULL) {
-        perror("Error opening log file");
+        perror("Error opening stats file");
     }
-    fprintf(file, "TIME %lld: END job %s\n", curr_time, cmd);
+    fprintf(file, "total running time: %lld milliseconds\n",total_running_time);
+    fprintf(file, "sum of jobs turnaround time: %lld milliseconds\n", sum_turnaround);
+    fprintf(file, "min job turnaround time: %lld milliseconds\n", min_turnaround);
+    fprintf(file, "average jobs turnaround time: %f milliseconds\n", avg_turnaround);
+    fprintf(file, "max job turnaround time: %lld milliseconds\n", max_turnaround);
     fclose(file);
 }
