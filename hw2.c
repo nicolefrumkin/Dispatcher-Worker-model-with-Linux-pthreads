@@ -39,7 +39,8 @@ int main(int argc, char *argv[]) {
         }
         fclose(file);
     }
-    create_threads(num_threads,thread_ids,threads, queue);
+    WorkerArgs* args = malloc(sizeof(WorkerArgs));
+    create_threads(num_threads,thread_ids,threads, queue, args);
     read_lines(cmdfile, thread_ids, threads, queue, num_threads, start_time, log_enabled);
     fclose(cmdfile); 
 
@@ -70,6 +71,7 @@ int main(int argc, char *argv[]) {
 
     free(threads);
     free(queue);
+    free(args);
     
     return 0;
 }
@@ -84,8 +86,8 @@ void* worker_thread(void* arg) {
         char temp_line[MAX_LINE];
         int times = 1;
         char* token = NULL;
-        char* token1_ptr;
-        char* token_ptr;
+        char* token1_ptr = NULL;
+        char* token_ptr = NULL;
 
         char* job = dequeue(queue, &dispatch_time);
         if (job == NULL) { 
@@ -93,6 +95,9 @@ void* worker_thread(void* arg) {
         }
         strcpy(temp_line, job); // using temp line to not ruin the original with tokens
         char* token1 = strtok_r(temp_line, ";", &token1_ptr);
+        if (token1 == NULL) {
+            continue;
+        }
         while (token1 != NULL){
             if (strstr(token1, "repeat") != NULL) { // if token inculds repeat
                 times = atoi(strtok_r(token1, "repeat ", &token1_ptr)); //get the repeat times
@@ -100,13 +105,25 @@ void* worker_thread(void* arg) {
                 for (int i = 0 ; i < times; i++){
                     strcpy(temp_line, job);
                     token = strtok_r(temp_line, ";",&token_ptr);
+                    if (token == NULL) {
+                        continue;
+                    }
                     while (strstr(token, "repeat") == NULL){
                         token = strtok_r(NULL, ";", &token_ptr);
+                        if (token==NULL){
+                            continue;
+                        }
                         }
                     token = strtok_r(NULL, ";", &token_ptr);
+                    if (token==NULL){
+                            continue;
+                        }
                     while (token != NULL){
                         execute_command(token, queue->time, thread_id, queue->log_enabled);
                         token = strtok_r(NULL, ";", &token_ptr);
+                        if (token==NULL){
+                            continue;
+                        }
                         }
                     }
                 break;
@@ -114,6 +131,9 @@ void* worker_thread(void* arg) {
             else{
                 execute_command(token1, queue->time, thread_id, queue->log_enabled);
                 token1 = strtok_r(NULL,";", &token1_ptr);
+                if (token1==NULL){
+                            continue;
+                        }
             }
         }
         
@@ -132,7 +152,6 @@ void* worker_thread(void* arg) {
         total_jobs_processed++;
         pthread_mutex_unlock(&stats_mutex);
     }
-    free(args);
     return NULL;
 }
 
@@ -187,6 +206,9 @@ char* dequeue(JobQueue* queue, long long *dispatch_time) {
 void execute_command(char* cmd, long long start_time, int TID, bool log_enabled) {
     char* cmd1 = strtok(cmd, " ");
     char* cmd2 = strtok(NULL, "");
+    if (cmd1==NULL || cmd2 == NULL){
+        return;
+    }
     if (strcmp(cmd1, "increment") != 0 &&
         strcmp(cmd1, "decrement") != 0 &&
         strcmp(cmd1, "msleep") != 0)  {
@@ -273,20 +295,18 @@ void create_thread_files(int num_threads) {
     }
 }
 
-void create_threads(int num_threads, int* thread_ids, pthread_t* threads, JobQueue* queue) { 
+void create_threads(int num_threads, int* thread_ids, pthread_t* threads, JobQueue* queue, WorkerArgs* args) { 
     if (threads == NULL) {
         perror("Failed to allocate memory");
     }
 
     for (int i = 0; i < num_threads; i++) {
         thread_ids[i] = i; // Assign a unique ID to each thread
-        WorkerArgs* args = malloc(sizeof(WorkerArgs));
         args->queue = queue;
         args->thread_id = thread_ids[i]; // Pass the unique thread ID
 
         if (pthread_create(&threads[i], NULL, worker_thread, args) != 0) {
             perror("Failed to create thread");
-            free(args); // Free memory if thread creation fails
         }
     }
 }
@@ -301,7 +321,7 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
         char* token_ptr = NULL;
         strcpy(line_cpy, line);
         // check if worker or dispatcher
-        token = strtok_r(line, " ", &token_ptr); // Split by space
+        token = strtok(line, " "); // Split by space
         if (token == NULL) {
             continue; // Skip empty lines
         }
@@ -340,7 +360,11 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
 
         // done - need to test more
         else if (strcmp(token, "worker") == 0) {
-            enqueue(queue, strtok(NULL, ""));
+            char* token2 = strtok(NULL, "");
+            if (token2==NULL){
+                continue;
+            }
+            enqueue(queue, token2);
             }   
         }
 }

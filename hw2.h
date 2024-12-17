@@ -8,7 +8,7 @@
 #define MAX_THREADS 4096
 #define MAX_LINE 1024
 #define MAX_COUNTERS 100
-#define MAX_JOBS 1024
+#define MAX_JOBS 512
 
 typedef struct JobQueue { // thread safe queue
     char* jobs[MAX_JOBS];
@@ -32,7 +32,7 @@ typedef struct {
 
 void* worker_thread(void* arg);
 void create_counter_files(int num_counters);
-void create_threads(int num_threads, int* thread_ids,pthread_t* threads, JobQueue* queue);
+void create_threads(int num_threads, int* thread_ids,pthread_t* threads, JobQueue* queue, WorkerArgs* args);
 void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads, long long start_time, bool log_en);
 void init_queue(JobQueue* queue, long long start_time, bool log_enabled);
 void enqueue(JobQueue* queue, const char* job);
@@ -55,7 +55,7 @@ long long min_turnaround = 0;
 long long max_turnaround = 0;
 int total_jobs_processed = 0;
 
-// Initialize all mutexes
+// Initialize all mutexe
 void initialize_file_mutexes() {
     for (int i = 0; i < MAX_COUNTERS; i++) {
         pthread_mutex_init(&file_mutexes[i], NULL);
