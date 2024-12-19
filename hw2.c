@@ -204,6 +204,9 @@ char* dequeue(JobQueue* queue, long long *dispatch_time) {
 
 // exectue a cmd by a worker
 void execute_command(char* cmd, long long start_time, int TID, bool log_enabled) {
+    char original_cmd[1024];
+    strcpy(original_cmd,cmd);
+    printf("%s\n",original_cmd);
     char* cmd1 = strtok(cmd, " ");
     char* cmd2 = strtok(NULL, "");
     if (cmd1==NULL || cmd2 == NULL){
@@ -219,7 +222,7 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
     pthread_mutex_unlock(&active_threades_mutex);
     if (log_enabled) {
         long long curr_time = get_current_time_in_milliseconds();
-        print_to_log_file(curr_time-start_time, cmd, TID,"START");
+        print_to_log_file(curr_time-start_time, original_cmd, TID,"START");
     }
 
     int number = atoi(cmd2); // Convert cmd2 to an integer
@@ -258,7 +261,7 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
     }
     if (log_enabled) {
         long long curr_time = get_current_time_in_milliseconds();
-        print_to_log_file(curr_time-start_time, cmd, TID, "END");
+        print_to_log_file(curr_time-start_time, original_cmd, TID, "END");
     }
     pthread_mutex_lock(&active_threades_mutex);
     active_threades -= 1;
@@ -318,7 +321,6 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
     while (fgets(line, sizeof(line), cmdfile)) {
         line[strcspn(line, "\n")] = '\0';
         char line_cpy[MAX_LINE];
-        char* token_ptr = NULL;
         strcpy(line_cpy, line);
         // check if worker or dispatcher
         token = strtok(line, " "); // Split by space
@@ -386,9 +388,7 @@ void print_to_log_file(long long curr_time, char* cmd,int TID, char* end_or_star
     if (file == NULL) {
         perror("Error opening log file");
     }
-    if (cmd[0]==' ') {
-        cmd++;
-    }
+    trim(cmd);
     fprintf(file, "TIME %lld: %s job %s\n",curr_time,end_or_start,cmd);
     fclose(file);
 }
@@ -406,4 +406,40 @@ void create_stats_file(long long start_time){
     fprintf(file, "average jobs turnaround time: %.3f milliseconds\n", avg_turnaround);
     fprintf(file, "max job turnaround time: %lld milliseconds\n", max_turnaround);
     fclose(file);
+}
+
+void trim(char *str) {
+    char *start = str;  // Pointer to track leading spaces
+    char *end;
+
+    // Trim leading spaces
+    while (*start && isspace((unsigned char)*start)) {
+        start++;
+    }
+
+    // Trim trailing spaces
+    end = start + strlen(start) - 1;
+    while (end > start && isspace((unsigned char)*end)) {
+        *end = '\0';
+        end--;
+    }
+
+    // Reduce spaces between words
+    char *dest = str;  // Destination pointer to rewrite the string
+    int in_space = 0;  // Flag to track spaces
+
+    while (*start) {
+        if (isspace((unsigned char)*start)) {
+            if (!in_space) {  // First space encountered
+                *dest++ = ' ';  // Write a single space
+                in_space = 1;
+            }
+        } else {
+            *dest++ = *start;  // Copy non-space character
+            in_space = 0;      // Reset space flag
+        }
+        start++;
+    }
+
+    *dest = '\0';  // Null-terminate the string
 }

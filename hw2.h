@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <ctype.h>
 #define MAX_THREADS 4096
 #define MAX_LINE 1024
 #define MAX_COUNTERS 100
@@ -42,6 +43,7 @@ void create_thread_files(int num_threads);
 long long get_current_time_in_milliseconds();
 void print_to_log_file(long long curr, char* cmd,int TID, char* end_or_start);
 void create_stats_file(long long start_time);
+void trim(char *str);
 
 pthread_mutex_t file_mutexes[MAX_COUNTERS]; // Array of mutexes for files (assuming a maximum of 100 files)
 
