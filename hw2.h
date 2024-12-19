@@ -33,7 +33,7 @@ typedef struct {
 
 void* worker_thread(void* arg);
 void create_counter_files(int num_counters);
-void create_threads(int num_threads, int* thread_ids,pthread_t* threads, JobQueue* queue, WorkerArgs* args);
+void create_threads(int num_threads, int* thread_ids,pthread_t* threads, JobQueue* queue);
 void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads, long long start_time, bool log_en);
 void init_queue(JobQueue* queue, long long start_time, bool log_enabled);
 void enqueue(JobQueue* queue, const char* job);

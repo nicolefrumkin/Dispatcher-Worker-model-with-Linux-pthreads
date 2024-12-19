@@ -39,8 +39,7 @@ int main(int argc, char *argv[]) {
         }
         fclose(file);
     }
-    WorkerArgs* args = malloc(sizeof(WorkerArgs));
-    create_threads(num_threads,thread_ids,threads, queue, args);
+    create_threads(num_threads,thread_ids,threads, queue);
     read_lines(cmdfile, thread_ids, threads, queue, num_threads, start_time, log_enabled);
     fclose(cmdfile); 
 
@@ -71,7 +70,6 @@ int main(int argc, char *argv[]) {
 
     free(threads);
     free(queue);
-    free(args);
     
     return 0;
 }
@@ -152,6 +150,7 @@ void* worker_thread(void* arg) {
         total_jobs_processed++;
         pthread_mutex_unlock(&stats_mutex);
     }
+    free(args);
     return NULL;
 }
 
@@ -223,6 +222,7 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
     if (log_enabled) {
         long long curr_time = get_current_time_in_milliseconds();
         print_to_log_file(curr_time-start_time, original_cmd, TID,"START");
+        printf("printed start\n");
     }
 
     int number = atoi(cmd2); // Convert cmd2 to an integer
@@ -262,6 +262,7 @@ void execute_command(char* cmd, long long start_time, int TID, bool log_enabled)
     if (log_enabled) {
         long long curr_time = get_current_time_in_milliseconds();
         print_to_log_file(curr_time-start_time, original_cmd, TID, "END");
+        printf("printed stop\n");
     }
     pthread_mutex_lock(&active_threades_mutex);
     active_threades -= 1;
@@ -298,21 +299,33 @@ void create_thread_files(int num_threads) {
     }
 }
 
-void create_threads(int num_threads, int* thread_ids, pthread_t* threads, JobQueue* queue, WorkerArgs* args) { 
+void create_threads(int num_threads, int* thread_ids, pthread_t* threads, JobQueue* queue) { 
     if (threads == NULL) {
         perror("Failed to allocate memory");
+        return;
     }
 
     for (int i = 0; i < num_threads; i++) {
         thread_ids[i] = i; // Assign a unique ID to each thread
+
+        // Allocate memory for each thread's arguments
+        WorkerArgs* args = malloc(sizeof(WorkerArgs));
+        if (args == NULL) {
+            perror("Failed to allocate memory for WorkerArgs");
+            return;
+        }
+
         args->queue = queue;
         args->thread_id = thread_ids[i]; // Pass the unique thread ID
 
+        // Create the thread
         if (pthread_create(&threads[i], NULL, worker_thread, args) != 0) {
             perror("Failed to create thread");
+            free(args); // Clean up if thread creation fails
         }
     }
 }
+
 
 void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads, long long start_time, bool log_en) {
     char line[MAX_LINE]; // Buffer to hold each line

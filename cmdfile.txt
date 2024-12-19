@@ -1,8 +1,2 @@
-worker          increment        5
-worker        msleep      20 
-dispatcher_msleep    1000
 worker msleep 100
 worker msleep 200
-worker msleep 300
-dispatcher_wait  
-worker decrement 2
