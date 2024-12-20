@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <ctype.h>
 #define MAX_THREADS 4096
 #define MAX_LINE 1024
 #define MAX_COUNTERS 100
@@ -32,7 +33,7 @@ typedef struct {
 
 void* worker_thread(void* arg);
 void create_counter_files(int num_counters);
-void create_threads(int num_threads, int* thread_ids,pthread_t* threads, JobQueue* queue, WorkerArgs* args);
+void create_threads(int num_threads, int* thread_ids,pthread_t* threads, JobQueue* queue);
 void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* queue, int num_threads, long long start_time, bool log_en);
 void init_queue(JobQueue* queue, long long start_time, bool log_enabled);
 void enqueue(JobQueue* queue, const char* job);
@@ -42,6 +43,7 @@ void create_thread_files(int num_threads);
 long long get_current_time_in_milliseconds();
 void print_to_log_file(long long curr, char* cmd,int TID, char* end_or_start);
 void create_stats_file(long long start_time);
+void trim(char *str);
 
 pthread_mutex_t file_mutexes[MAX_COUNTERS]; // Array of mutexes for files (assuming a maximum of 100 files)
 
