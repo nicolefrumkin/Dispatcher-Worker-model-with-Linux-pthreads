@@ -101,7 +101,6 @@ void* worker_thread(void* arg) {
         while (token1 != NULL){
             if (strstr(token1, "repeat") != NULL) { // if token inculds repeat
                 times = atoi(strtok_r(token1, "repeat ", &token1_ptr)); //get the repeat times
-                printf("times is: %d\n", times);
                 for (int i = 0 ; i < times; i++){
                     strcpy(temp_line, job);
                     token = strtok_r(temp_line, ";",&token_ptr);
@@ -318,7 +317,7 @@ void read_lines(FILE* cmdfile, int* thread_ids, pthread_t* threads, JobQueue* qu
     while (fgets(line, sizeof(line), cmdfile)) {
         line[strcspn(line, "\n")] = '\0';
         char line_cpy[MAX_LINE];
-        char* token_ptr = NULL;
+
         strcpy(line_cpy, line);
         // check if worker or dispatcher
         token = strtok(line, " "); // Split by space
